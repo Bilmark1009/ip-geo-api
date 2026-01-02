@@ -158,22 +158,36 @@ export const validateToken = async (req, res, next) => {
  */
 export const getIPInfo = async (req, res, next) => {
   try {
-    const { ip } = req.query;
+    let clientIp;
+    
+    if (req.query.ip) {
+      // Use provided IP from query parameter
+      clientIp = req.query.ip;
+    } else {
+      // Get real client IP using Express's req.ip (now works with trust proxy)
+      clientIp = req.ip || 
+                 req.headers['x-forwarded-for']?.split(',')[0].trim() || 
+                 req.socket.remoteAddress;
+      
+      // Remove IPv6 prefix if present
+      if (clientIp && clientIp.startsWith('::ffff:')) {
+        clientIp = clientIp.substring(7);
+      }
+    }
 
-    // Fetch from ipinfo.io (proxied through backend to avoid CORS issues)
-    const url = ip 
-      ? `https://ipinfo.io/${ip}/json`
-      : 'https://ipinfo.io/json';
+    // Fetch from ipinfo.io
+    const url = `https://ipinfo.io/${clientIp}/json`;
 
     const response = await axios.get(url, {
       timeout: 5000
     });
 
-    logger.info(`IP info fetched: ${ip || 'current'}`);
+    logger.info(`IP info fetched: ${clientIp}`);
 
     res.json({
       success: true,
-      data: response.data
+      data: response.data,
+      detectedIp: clientIp
     });
   } catch (error) {
     logger.error('IP Info Error:', error.message);
